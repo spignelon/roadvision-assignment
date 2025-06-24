@@ -22,6 +22,7 @@ def ensure_video_dir():
             print(f"  - {video['name']}")
 
 if __name__ == "__main__":
+    from waitress import serve
     # Disable werkzeug logging
     import logging
     log = logging.getLogger('werkzeug')
@@ -35,4 +36,4 @@ if __name__ == "__main__":
     print("Videos will be automatically loaded and processed")
     
     # Run the Flask app
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    serve(app, host='0.0.0.0', port=5000, threads=32)

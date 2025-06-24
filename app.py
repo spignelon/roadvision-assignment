@@ -28,15 +28,15 @@ CONFIG = {
     "detection": {
         "enabled": True,
         "model_path": "models/yolov5s.pt",
-        "confidence": 0.4,  # Lowered for better sensitivity
-        "process_every_n_frames": 4  # Process every 4th frame
+        "confidence": 0.4,
+        "process_every_n_frames": 8  # Increased to reduce CPU load
     },
     "motion": {
         "enabled": True,
         "threshold": 25,
-        "contour_area": 300  # Lowered to detect smaller motion
+        "contour_area": 300
     },
-    "video_dir": "videos"  # Directory containing video files
+    "video_dir": "videos"
 }
 
 # Global state
@@ -91,3 +91,6 @@ def before_request():
         # This will be defined when routes.py is imported
         # And will be called on first request
         app.initialized = True
+
+# NOTE: For best scalability, use /api/streams/<stream_id>/snapshot for dashboard grid,
+# and /api/streams/<stream_id>/video_feed only for single stream view.

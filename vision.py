@@ -143,8 +143,9 @@ class StreamProcessor:
         self.running = False
         self.thread = None
         self.latest_frame = None
-        self.frame_queue = Queue(maxsize=30)
-        self.result_queue = Queue(maxsize=60)
+        # Increased queue sizes for scalability
+        self.frame_queue = Queue(maxsize=20)
+        self.result_queue = Queue(maxsize=20)
         self.fps = 0
         self.is_local_file = os.path.isfile(url)
         self.video_name = Path(url).name if self.is_local_file else url
@@ -181,7 +182,7 @@ class StreamProcessor:
         self.thread = threading.Thread(target=self._process_stream)
         self.thread.daemon = True
         self.thread.start()
-        
+
         # Start the detection thread
         self.detection_thread = threading.Thread(target=self._process_detection)
         self.detection_thread.daemon = True
@@ -259,29 +260,32 @@ class StreamProcessor:
                 if self.frame_queue.empty():
                     time.sleep(0.01)
                     continue
-                    
+
                 frame = self.frame_queue.get()
                 self.detection_frame_counter += 1
-                
+
                 results = {"timestamp": time.time()}
-                
+
                 # Only run detectors every N frames to save CPU
-                process_this_frame = (self.detection_frame_counter % self.config["detection"]["process_every_n_frames"]) == 0
+                process_this_frame = (
+                    self.detection_frame_counter 
+                    % self.config["detection"]["process_every_n_frames"]
+                ) == 0
 
                 if process_this_frame:
                     if self.config["motion"]["enabled"]:
                         self.last_motion_detections = self.motion_detector.detect(frame)
-                    
+
                     if self.config["detection"]["enabled"]:
                         self.last_object_detections = self.object_detector.detect(frame)
 
                 results["motion"] = self.last_motion_detections
                 results["detections"] = self.last_object_detections
-                
+
                 # Add annotated frame
                 annotated_frame = self._annotate_frame(frame.copy(), self.last_object_detections, self.last_motion_detections)
                 results["frame"] = annotated_frame
-                
+
                 # Store results
                 if not self.result_queue.full():
                     self.result_queue.put(results)
@@ -289,7 +293,7 @@ class StreamProcessor:
                     # Remove oldest result if queue is full
                     self.result_queue.get()
                     self.result_queue.put(results)
-                    
+
             except Exception as e:
                 logger.error(f"Error in detection for stream {self.stream_id}: {str(e)}")
                 time.sleep(0.1)

@@ -114,6 +114,7 @@ export const Dashboard: React.FC = () => {
               streams={streams}
               detections={detections}
               onDeleteStream={deleteStream}
+              useSnapshots={true} // Use snapshot polling for grid
             />
           </div>
         </div>
