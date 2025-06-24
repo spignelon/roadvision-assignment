@@ -161,14 +161,14 @@ GET /api/streams/{stream_id}/detections
     {
       "bbox": [100, 200, 300, 400],
       "confidence": 0.91,
-      "label": "person",
-      "type": "person"
-    },
+      "label": "person"
+    }
+  ],
+  "motion": [
     {
       "bbox": [500, 300, 600, 450],
       "confidence": 1.0,
-      "label": "motion",
-      "type": "motion"
+      "label": "motion"
     }
   ]
 }
