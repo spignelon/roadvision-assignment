@@ -225,10 +225,10 @@ class StreamProcessor:
                         self.cap = cv2.VideoCapture(self.url)
                         continue
                     else:
-                        # For local files, loop back to the beginning
                         logger.info(f"End of video {self.url}, looping back")
                         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         self.frame_count = 0
+                        self.start_time = time.time()  # Reset start time for new playback
                         continue
                 
                 self.frame_count += 1
