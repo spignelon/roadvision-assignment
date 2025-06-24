@@ -21,13 +21,12 @@ export const DetectionOverlay: React.FC<DetectionOverlayProps> = ({ detection, s
     return null;
   }
 
-  const totalDetections = detections.length + motions.length;
   const personCount = detections.filter(d => d.label === 'person').length;
   const motionCount = motions.length;
 
   return (
     <div className="absolute top-2 left-2 right-2 z-10">
-      <div className="bg-black bg-opacity-75 rounded-lg p-3 backdrop-blur-sm">
+      <div className="bg-black bg-opacity-75 rounded-lg p-2 backdrop-blur-sm">
         <div className="flex items-center justify-between text-white text-sm">
           <div className="flex items-center gap-3">
             {personCount > 0 && (
@@ -47,23 +46,6 @@ export const DetectionOverlay: React.FC<DetectionOverlayProps> = ({ detection, s
             {new Date(detection.timestamp * 1000).toLocaleTimeString()}
           </div>
         </div>
-
-        {totalDetections > 0 && (
-          <div className="mt-2 space-y-1">
-            {detections.map((det, index) => (
-              <div key={`person-${index}`} className="flex items-center justify-between text-xs">
-                <span className="text-green-400">Person {index + 1}</span>
-                <span className="text-white">{(det.confidence * 100).toFixed(1)}%</span>
-              </div>
-            ))}
-            {motions.map((motion, index) => (
-              <div key={`motion-${index}`} className="flex items-center justify-between text-xs">
-                <span className="text-red-400">Motion {index + 1}</span>
-                <span className="text-white">Active</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
