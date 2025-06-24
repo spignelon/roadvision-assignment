@@ -104,10 +104,12 @@ class YOLODetector:
             detections = []
             for *box, conf, cls in results.xyxy[0].cpu().numpy():
                 x1, y1, x2, y2 = map(int, box)
+                class_id = int(cls)
+                class_name = self.model.names[class_id] if class_id < len(self.model.names) else "unknown"
                 detections.append({
                     "bbox": [x1, y1, x2, y2],
                     "confidence": float(conf),
-                    "label": "person"
+                    "label": class_name
                 })
                 
             return detections
@@ -295,20 +297,22 @@ class StreamProcessor:
     def _annotate_frame(self, frame, detections):
         for detection in detections:
             x1, y1, x2, y2 = detection["bbox"]
+            label = detection["label"]
             
-            # Draw boxes with different colors based on detection type
-            if detection["type"] == "person":
-                color = (0, 255, 0)  # Green for people
+            # Draw boxes with different colors
+            if label == "person":
+                color = (0, 255, 0)  # Green for person
             else:
-                color = (0, 0, 255)  # Red for motion
-                
+                color = (0, 0, 255)  # Red for any other class
+
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            
-            # Add label
-            label = f"{detection['type']} {detection['confidence']:.2f}"
-            cv2.putText(frame, label, (x1, y1 - 10), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-                
+            cv2.putText(frame,
+                        f"{label} {detection['confidence']:.2f}",
+                        (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        color,
+                        2)
         return frame
         
     def get_latest_frame(self):
