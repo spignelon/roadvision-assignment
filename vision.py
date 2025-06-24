@@ -160,6 +160,7 @@ class StreamProcessor:
             model_path=config["detection"]["model_path"],
             confidence=config["detection"]["confidence"]
         )
+        self.start_time = None  # Ensure the attribute is initialized
         
     def start(self):
         if self.running:
@@ -208,7 +209,7 @@ class StreamProcessor:
         
         while self.running:
             try:
-                if self.is_local_file and self.original_fps > 0:
+                if self.is_local_file and self.start_time is not None and self.original_fps > 0:
                     target_time = self.frame_count / self.original_fps
                     elapsed = time.time() - self.start_time
                     if elapsed < target_time:
