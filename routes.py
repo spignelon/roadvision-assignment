@@ -85,14 +85,10 @@ def get_stream_detections(stream_id):
         
     result = streams[stream_id].get_latest_result()
     if result is None:
-        return jsonify({"detections": []})
+        return jsonify({"detections": [], "motion": []})
         
-    # Remove the frame from the result to reduce response size
-    result_copy = result.copy()
-    if "frame" in result_copy:
-        del result_copy["frame"]
-        
-    return jsonify(result_copy)
+    # Result no longer contains a frame, so we can return it directly.
+    return jsonify(result)
 
 @app.route('/api/streams/<stream_id>/snapshot', methods=['GET'])
 def get_stream_snapshot(stream_id):
@@ -100,17 +96,20 @@ def get_stream_snapshot(stream_id):
     if stream_id not in streams:
         return jsonify({"error": f"Stream {stream_id} not found"}), 404
         
-    # Get the latest frame with detections
-    result = streams[stream_id].get_latest_result()
+    proc = streams[stream_id]
+    frame = proc.get_latest_frame()
+    result = proc.get_latest_result()
     
-    if result is None or "frame" not in result:
-        # Fallback to raw frame
-        frame = streams[stream_id].get_latest_frame()
-    else:
-        frame = result["frame"]
+    annotated_frame = frame.copy()
+    if result:
+        annotated_frame = proc._annotate_frame(
+            annotated_frame,
+            result.get("detections", []),
+            result.get("motion", [])
+        )
         
     # Convert to JPEG
-    _, buffer = cv2.imencode('.jpg', frame)
+    _, buffer = cv2.imencode('.jpg', annotated_frame)
     io_buf = io.BytesIO(buffer)
     
     return send_file(io_buf, mimetype='image/jpeg')
@@ -122,19 +121,37 @@ def video_feed(stream_id):
         return jsonify({"error": f"Stream {stream_id} not found"}), 404
         
     def generate():
+        # Target ~30 FPS for a smoother feed
+        frame_interval = 1.0 / 30.0
+        
         while streams.get(stream_id) and streams[stream_id].running:
-            result = streams[stream_id].get_latest_result()
+            start_time = time.time()
             
-            if result is None or "frame" not in result:
-                # Fallback to raw frame
-                frame = streams[stream_id].get_latest_frame()
-            else:
-                frame = result["frame"]
+            proc = streams.get(stream_id)
+            if not proc:
+                break
+
+            frame = proc.get_latest_frame()
+            result = proc.get_latest_result()
+            
+            annotated_frame = frame.copy()
+            if result:
+                annotated_frame = proc._annotate_frame(
+                    annotated_frame, 
+                    result.get("detections", []), 
+                    result.get("motion", [])
+                )
                 
             # Convert to JPEG
-            _, buffer = cv2.imencode('.jpg', frame)
+            _, buffer = cv2.imencode('.jpg', annotated_frame)
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            
+            # Regulate frame rate
+            elapsed = time.time() - start_time
+            sleep_time = frame_interval - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
             
     return Response(generate(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')

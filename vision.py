@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import time
 import threading
-from queue import Queue
+from queue import Queue, Empty
 import logging
 import os
 from pathlib import Path
@@ -90,7 +90,7 @@ class YOLODetector:
         # Set confidence threshold
         self.model.conf = 0.3  # Lower confidence for broader detection
         # Set to only detect people (class 0 in COCO dataset)
-        self.model.classes = [0]  # Detect only people
+        self.model.classes = None  # Detect all classes
         
     def detect(self, frame):
         try:
@@ -257,11 +257,18 @@ class StreamProcessor:
     def _process_detection(self):
         while self.running:
             try:
-                if self.frame_queue.empty():
-                    time.sleep(0.01)
+                # Drain the queue to get the latest frame, which avoids processing stale frames and reduces lag.
+                frame = None
+                try:
+                    while True:
+                        frame = self.frame_queue.get_nowait()
+                except Empty:
+                    pass  # The queue is empty, so we have the last frame.
+
+                if frame is None:
+                    time.sleep(0.02)  # No frame available, wait a bit.
                     continue
 
-                frame = self.frame_queue.get()
                 self.detection_frame_counter += 1
 
                 results = {"timestamp": time.time()}
@@ -282,11 +289,9 @@ class StreamProcessor:
                 results["motion"] = self.last_motion_detections
                 results["detections"] = self.last_object_detections
 
-                # Add annotated frame
-                annotated_frame = self._annotate_frame(frame.copy(), self.last_object_detections, self.last_motion_detections)
-                results["frame"] = annotated_frame
+                # ANNOTATION IS NOW HANDLED BY THE ROUTES, so we don't store the frame here.
 
-                # Store results
+                # Store results (metadata only)
                 if not self.result_queue.full():
                     self.result_queue.put(results)
                 else:
@@ -303,7 +308,10 @@ class StreamProcessor:
         for detection in object_detections:
             x1, y1, x2, y2 = detection["bbox"]
             label = detection["label"]
-            color = (0, 255, 0)  # Green for person
+            
+            # Green for person, red for other objects
+            color = (0, 255, 0) if label == "person" else (0, 0, 255)
+            
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(frame,
                         f"{label} {detection['confidence']:.2f}",
