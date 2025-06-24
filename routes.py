@@ -135,7 +135,6 @@ def video_feed(stream_id):
             _, buffer = cv2.imencode('.jpg', frame)
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-            time.sleep(0.1)  # Limit frame rate
             
     return Response(generate(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')

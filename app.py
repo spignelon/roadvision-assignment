@@ -26,12 +26,13 @@ CONFIG = {
     "detection": {
         "enabled": True,
         "model_path": "models/yolov5s.pt",
-        "confidence": 0.5
+        "confidence": 0.4,  # Lowered for better sensitivity
+        "process_every_n_frames": 4  # Process every 4th frame
     },
     "motion": {
         "enabled": True,
         "threshold": 25,
-        "contour_area": 500
+        "contour_area": 300  # Lowered to detect smaller motion
     },
     "video_dir": "videos"  # Directory containing video files
 }

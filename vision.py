@@ -13,8 +13,8 @@ logger = logging.getLogger("vms.models")
 
 class MotionDetector:
     def __init__(self, threshold=25, min_contour_area=500):
-        self.threshold = threshold
-        self.min_contour_area = min_contour_area
+        self.threshold = 15  # Lowered for increased sensitivity
+        self.min_contour_area = 200  # Lowered to detect smaller objects
         self.background_subtractor = cv2.createBackgroundSubtractorMOG2(
             history=100, varThreshold=50, detectShadows=True
         )
@@ -88,9 +88,9 @@ class YOLODetector:
                 self.model = DummyModel()
                 
         # Set confidence threshold
-        self.model.conf = confidence
+        self.model.conf = 0.3  # Lower confidence for broader detection
         # Set to only detect people (class 0 in COCO dataset)
-        self.model.classes = [0]
+        self.model.classes = None  # Detect all classes
         
     def detect(self, frame):
         try:
@@ -203,13 +203,11 @@ class StreamProcessor:
         
         while self.running:
             try:
-                # Control frame rate for local video files to simulate real-time streaming
-                if self.is_local_file and self.original_fps > 0:
-                    target_time = self.frame_count / self.original_fps
-                    current_time = time.time() - last_time
-                    if current_time < target_time:
-                        time.sleep(max(0, target_time - current_time))
-                
+                # if self.is_local_file and self.original_fps > 0:
+                #     target_time = ...
+                #     time.sleep(...)
+
+                # Removed time-based throttling to speed up frame reading
                 success, frame = self.cap.read()
                 
                 if not success:
