@@ -29,7 +29,7 @@ CONFIG = {
         "enabled": True,
         "model_path": "models/yolov5s.pt",
         "confidence": 0.4,
-        "process_every_n_frames": 8  # Increased to reduce CPU load
+        "process_every_n_frames": 4  # Increased to reduce CPU load
     },
     "motion": {
         "enabled": True,

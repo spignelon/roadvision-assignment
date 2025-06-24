@@ -12,13 +12,16 @@ interface StreamGridProps {
 
 export const StreamGrid: React.FC<StreamGridProps> = ({
   streams,
-  detections,
+  detections: propDetections,
   onDeleteStream,
   useSnapshots = false,
 }) => {
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const [openModalStreamId, setOpenModalStreamId] = useState<string | null>(null);
   const pollingRef = useRef<{ active: boolean }>({ active: true });
+
+  // Local state for detections
+  const [detections, setDetections] = useState<Record<string, DetectionData>>({});
 
   // Queue-based polling for snapshots
   useEffect(() => {
@@ -35,7 +38,7 @@ export const StreamGrid: React.FC<StreamGridProps> = ({
       if (!isMounted || !pollingRef.current.active) return;
       queue = streams
         .map((s) => s.id)
-        .filter((id) => id !== openModalStreamId); // Don't poll for modal-open stream
+        .filter((id) => id !== openModalStreamId);
 
       const next = async () => {
         if (!isMounted || !pollingRef.current.active) return;
@@ -43,16 +46,13 @@ export const StreamGrid: React.FC<StreamGridProps> = ({
           const streamId = queue.shift();
           if (!streamId) continue;
           inFlight++;
-          // Add cache buster
           const url = apiService.getSnapshotUrl(streamId) + '?t=' + Date.now();
           try {
-            // Fetch as blob to avoid caching issues
             const resp = await fetch(url, { cache: 'no-store' });
             if (resp.ok) {
               const blob = await resp.blob();
               const objectUrl = URL.createObjectURL(blob);
               setSnapshots((prev) => {
-                // Revoke previous object URL to avoid memory leak
                 if (prev[streamId]) URL.revokeObjectURL(prev[streamId]);
                 return { ...prev, [streamId]: objectUrl };
               });
@@ -68,11 +68,9 @@ export const StreamGrid: React.FC<StreamGridProps> = ({
         }
       };
 
-      // Start initial batch
       for (let i = 0; i < concurrency; i++) {
         next();
       }
-      // Schedule next poll
       timer = setTimeout(pollSnapshots, 1000);
     };
 
@@ -82,7 +80,6 @@ export const StreamGrid: React.FC<StreamGridProps> = ({
       isMounted = false;
       pollingRef.current.active = false;
       if (timer) clearTimeout(timer);
-      // Cleanup object URLs
       Object.values(snapshots).forEach((url) => URL.revokeObjectURL(url));
     };
     // eslint-disable-next-line
@@ -98,11 +95,46 @@ export const StreamGrid: React.FC<StreamGridProps> = ({
     pollingRef.current.active = true;
   };
 
+  // Fetch detection data for each stream periodically
+  useEffect(() => {
+    let isMounted = true;
+    let timer: NodeJS.Timeout | null = null;
+
+    const fetchDetections = async () => {
+      if (!isMounted) return;
+      await Promise.all(
+        streams.map(async (stream) => {
+          try {
+            const detection = await apiService.getDetections(stream.id);
+            if (isMounted) {
+              setDetections((prev) => ({
+                ...prev,
+                [stream.id]: detection,
+              }));
+            }
+          } catch {
+            // ignore errors
+          }
+        })
+      );
+      timer = setTimeout(fetchDetections, 2000);
+    };
+
+    fetchDetections();
+
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line
+  }, [streams]);
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-6">
         {streams.map((stream) => {
-          const detection = detections?.[stream.id];
+          // Use local detections state
+          const detection = detections[stream.id];
           return (
             <div key={stream.id} className="bg-gray-800 rounded-lg shadow p-4 flex flex-col relative group">
               {/* Small red delete icon button in top-right */}
@@ -149,16 +181,30 @@ export const StreamGrid: React.FC<StreamGridProps> = ({
                   <span className="text-blue-400">FPS: {stream.fps.toFixed(1)}</span>
                 </div>
                 {/* Analytics section */}
-                {detection && (
-                  <div className="flex gap-4 mt-2 text-xs text-gray-300">
-                    <span>
-                      <span className="font-bold text-green-400">{detection.detections?.length ?? 0}</span> detected
-                    </span>
-                    <span>
-                      <span className="font-bold text-red-400">{detection.motion?.length ?? 0}</span> motion
-                    </span>
-                  </div>
-                )}
+                <div className="flex gap-4 mt-2 text-xs text-gray-300">
+                  <span>
+                    <span className="font-bold text-green-400">
+                      {Array.isArray(detection?.detections) ? detection.detections.length : 0}
+                    </span> person
+                  </span>
+                  <span>
+                    <span className="font-bold text-red-400">
+                      {Array.isArray(detection?.motion) ? detection.motion.length : 0}
+                    </span> motion
+                  </span>
+                  <span>
+                    <span className="font-bold text-yellow-400">
+                      {detection?.timestamp
+                        ? new Date(
+                            (detection.timestamp > 1e12
+                              ? detection.timestamp
+                              : detection.timestamp * 1000)
+                          ).toLocaleTimeString()
+                        : '--'}
+                    </span>{' '}
+                    last update
+                  </span>
+                </div>
               </div>
             </div>
           );
