@@ -197,26 +197,6 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ stream, detection, onD
             <p className="text-xs text-gray-400">Last Update</p>
           </div>
         </div>
-
-        {/* Detection Details */}
-        {(personCount > 0 || motionCount > 0) && (
-          <div className="mt-3 pt-3 border-t border-gray-700">
-            <div className="space-y-1">
-              {detections.map((det, index) => (
-                <div key={`person-${index}`} className="flex items-center justify-between text-xs">
-                  <span className="text-green-400">Person {index + 1}</span>
-                  <span className="text-white">{(det.confidence * 100).toFixed(1)}% confidence</span>
-                </div>
-              ))}
-              {motions.map((motion, index) => (
-                <div key={`motion-${index}`} className="flex items-center justify-between text-xs">
-                  <span className="text-red-400">Motion Area {index + 1}</span>
-                  <span className="text-white">Active</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
