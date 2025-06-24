@@ -184,6 +184,9 @@ class StreamProcessor:
         self.detection_thread.daemon = True
         self.detection_thread.start()
         
+        if self.is_local_file:
+            self.start_time = time.time()  # For local video pacing
+            
         logger.info(f"Stream {self.stream_id} started: {self.video_name}")
         return True
         
@@ -203,11 +206,12 @@ class StreamProcessor:
         
         while self.running:
             try:
-                # if self.is_local_file and self.original_fps > 0:
-                #     target_time = ...
-                #     time.sleep(...)
-
-                # Removed time-based throttling to speed up frame reading
+                if self.is_local_file and self.original_fps > 0:
+                    target_time = self.frame_count / self.original_fps
+                    elapsed = time.time() - self.start_time
+                    if elapsed < target_time:
+                        time.sleep(target_time - elapsed)
+                
                 success, frame = self.cap.read()
                 
                 if not success:
