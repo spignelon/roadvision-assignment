@@ -12,6 +12,8 @@ from typing import Dict, List, Set, Tuple, Optional
 import torch
 from flask_cors import CORS
 
+from vision import YOLODetector, DummyModel
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("vms")
@@ -40,6 +42,17 @@ CONFIG = {
 # Global state
 streams = {}
 detections = {}
+
+# Create a single, shared object detector
+try:
+    object_detector = YOLODetector(
+        model_path=CONFIG["detection"]["model_path"],
+        confidence=CONFIG["detection"]["confidence"]
+    )
+except Exception as e:
+    logger.error(f"Failed to load YOLO model: {e}")
+    # Fallback to a dummy model if loading fails
+    object_detector = DummyModel()
 
 # Function to discover video files in the specified directory
 def discover_videos(directory="videos") -> List[Dict]:

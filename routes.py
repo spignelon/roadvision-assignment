@@ -9,7 +9,7 @@ import threading
 import os
 from pathlib import Path
 
-from app import app, CONFIG, streams, detections, logger, discover_videos
+from app import app, CONFIG, streams, detections, logger, discover_videos, object_detector
 from vision import StreamProcessor
 
 # Define routes
@@ -36,7 +36,7 @@ def add_stream():
         return jsonify({"error": f"Stream with ID {stream_id} already exists"}), 400
         
     # Create stream processor
-    processor = StreamProcessor(stream_id, url, CONFIG)
+    processor = StreamProcessor(stream_id, url, CONFIG, object_detector)
     
     # Start the stream
     success = processor.start()
@@ -197,7 +197,7 @@ def load_video(video_id):
         return jsonify({"error": f"Video {video_id} is already loaded", "stream_id": video_id}), 400
     
     # Create stream processor and start it
-    processor = StreamProcessor(video_id, video["url"], CONFIG)
+    processor = StreamProcessor(video_id, video["url"], CONFIG, object_detector)
     success = processor.start()
     
     if not success:
@@ -224,7 +224,7 @@ def load_all_videos():
             continue
             
         # Create stream processor and start it
-        processor = StreamProcessor(video["id"], video["url"], CONFIG)
+        processor = StreamProcessor(video["id"], video["url"], CONFIG, object_detector)
         success = processor.start()
         
         if success:
@@ -244,21 +244,20 @@ def initialize_streams():
     # First, load any streams from the config
     for stream_id, stream_config in CONFIG["streams"].items():
         if stream_id not in streams:
-            processor = StreamProcessor(stream_id, stream_config["url"], CONFIG)
-            processor.start()
-            streams[stream_id] = processor
-            logger.info(f"Initialized stream {stream_id}")
+            processor = StreamProcessor(stream_id, stream_config["url"], CONFIG, object_detector)
+            success = processor.start()
+            if success:
+                streams[stream_id] = processor
     
     # Then, discover and auto-load videos if there are no streams yet
     if not streams:
         videos = discover_videos(CONFIG["video_dir"])
         for video in videos:
-            processor = StreamProcessor(video["id"], video["url"], CONFIG)
-            success = processor.start()
-            if success:
-                streams[video["id"]] = processor
-                CONFIG["streams"][video["id"]] = {"url": video["url"]}
-                logger.info(f"Auto-loaded video {video['id']}")
+            if video["id"] not in streams:
+                processor = StreamProcessor(video["id"], video["url"], CONFIG, object_detector)
+                success = processor.start()
+                if success:
+                    streams[video["id"]] = processor
 
 # Call initialize_streams at startup
 initialize_streams()

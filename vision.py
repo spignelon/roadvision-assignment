@@ -90,7 +90,7 @@ class YOLODetector:
         # Set confidence threshold
         self.model.conf = 0.3  # Lower confidence for broader detection
         # Set to only detect people (class 0 in COCO dataset)
-        self.model.classes = None  # Detect all classes
+        self.model.classes = [0]  # Detect only people
         
     def detect(self, frame):
         try:
@@ -135,7 +135,7 @@ class DummyModel:
         return DummyResults()
 
 class StreamProcessor:
-    def __init__(self, stream_id, url, config):
+    def __init__(self, stream_id, url, config, object_detector):
         self.stream_id = stream_id
         self.url = url
         self.config = config
@@ -143,8 +143,8 @@ class StreamProcessor:
         self.running = False
         self.thread = None
         self.latest_frame = None
-        self.frame_queue = Queue(maxsize=10)
-        self.result_queue = Queue(maxsize=30)
+        self.frame_queue = Queue(maxsize=30)
+        self.result_queue = Queue(maxsize=60)
         self.fps = 0
         self.is_local_file = os.path.isfile(url)
         self.video_name = Path(url).name if self.is_local_file else url
@@ -156,11 +156,11 @@ class StreamProcessor:
             threshold=config["motion"]["threshold"],
             min_contour_area=config["motion"]["contour_area"]
         )
-        self.object_detector = YOLODetector(
-            model_path=config["detection"]["model_path"],
-            confidence=config["detection"]["confidence"]
-        )
+        self.object_detector = object_detector
         self.start_time = None  # Ensure the attribute is initialized
+        self.detection_frame_counter = 0
+        self.last_object_detections = []
+        self.last_motion_detections = []
         
     def start(self):
         if self.running:
@@ -261,26 +261,25 @@ class StreamProcessor:
                     continue
                     
                 frame = self.frame_queue.get()
+                self.detection_frame_counter += 1
                 
-                # Process with detectors
-                results = {"timestamp": time.time(), "detections": []}
+                results = {"timestamp": time.time()}
                 
-                # Motion detection
-                if self.config["motion"]["enabled"]:
-                    motion_detections = self.motion_detector.detect(frame)
-                    for detection in motion_detections:
-                        detection["type"] = "motion"
-                        results["detections"].append(detection)
-                        
-                # Object detection
-                if self.config["detection"]["enabled"]:
-                    object_detections = self.object_detector.detect(frame)
-                    for detection in object_detections:
-                        detection["type"] = "person"
-                        results["detections"].append(detection)
+                # Only run detectors every N frames to save CPU
+                process_this_frame = (self.detection_frame_counter % self.config["detection"]["process_every_n_frames"]) == 0
+
+                if process_this_frame:
+                    if self.config["motion"]["enabled"]:
+                        self.last_motion_detections = self.motion_detector.detect(frame)
+                    
+                    if self.config["detection"]["enabled"]:
+                        self.last_object_detections = self.object_detector.detect(frame)
+
+                results["motion"] = self.last_motion_detections
+                results["detections"] = self.last_object_detections
                 
                 # Add annotated frame
-                annotated_frame = self._annotate_frame(frame.copy(), results["detections"])
+                annotated_frame = self._annotate_frame(frame.copy(), self.last_object_detections, self.last_motion_detections)
                 results["frame"] = annotated_frame
                 
                 # Store results
@@ -295,17 +294,12 @@ class StreamProcessor:
                 logger.error(f"Error in detection for stream {self.stream_id}: {str(e)}")
                 time.sleep(0.1)
                 
-    def _annotate_frame(self, frame, detections):
-        for detection in detections:
+    def _annotate_frame(self, frame, object_detections, motion_detections):
+        # Draw object detections (people)
+        for detection in object_detections:
             x1, y1, x2, y2 = detection["bbox"]
             label = detection["label"]
-            
-            # Draw boxes with different colors
-            if label == "person":
-                color = (0, 255, 0)  # Green for person
-            else:
-                color = (0, 0, 255)  # Red for any other class
-
+            color = (0, 255, 0)  # Green for person
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(frame,
                         f"{label} {detection['confidence']:.2f}",
@@ -314,6 +308,14 @@ class StreamProcessor:
                         0.5,
                         color,
                         2)
+
+        # Draw motion detections
+        for motion in motion_detections:
+            x1, y1, x2, y2 = motion["bbox"]
+            color = (0, 0, 255)  # Red for motion
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(frame, "Motion", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            
         return frame
         
     def get_latest_frame(self):
