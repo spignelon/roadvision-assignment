@@ -10,6 +10,7 @@ A lightweight Flask-based Video Management System that can handle multiple video
 - REST API for managing streams and retrieving detection results
 - Real-time video feeds with annotations
 - Local video file support with automatic discovery
+- Support for RTSP, HTTP, and HTTPS video streams
 
 ## Setup Instructions
 
@@ -330,6 +331,13 @@ POST /api/videos/load_all
 curl -X POST http://localhost:5000/api/streams \
   -H "Content-Type: application/json" \
   -d '{"url": "rtsp://example.com/stream1"}'
+```
+
+### Adding an HTTP/HTTPS Stream
+```bash
+curl -X POST http://localhost:5000/api/streams \
+  -H "Content-Type: application/json" \
+  -d '{"url": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"}'
 ```
 
 ### Adding a Webcam Stream

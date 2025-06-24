@@ -147,8 +147,20 @@ class StreamProcessor:
         self.frame_queue = Queue(maxsize=20)
         self.result_queue = Queue(maxsize=20)
         self.fps = 0
-        self.is_local_file = os.path.isfile(url)
-        self.video_name = Path(url).name if self.is_local_file else url
+
+        # Check if the URL is a local file path. This is used for pacing and looping.
+        # Remote streams (HTTP/RTSP) and webcams are not treated as local files.
+        if url.isdigit():
+            self.is_local_file = False
+        else:
+            self.is_local_file = os.path.isfile(url)
+
+        # Determine a display name for the stream
+        if self.is_local_file or url.lower().startswith(('http', 'rtsp')):
+            self.video_name = Path(url).name
+        else:
+            self.video_name = url # For webcams, etc.
+            
         self.last_frame_time = 0
         self.original_fps = 0
         self.frame_count = 0
