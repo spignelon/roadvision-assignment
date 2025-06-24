@@ -183,7 +183,7 @@ const StreamModal: React.FC<{ stream: Stream; onClose: () => void }> = ({
   // When modal is open, only show video_feed, not snapshot
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80">
-      <div className="bg-gray-900 rounded-lg shadow-lg p-6 max-w-2xl w-full relative">
+      <div className="bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-5xl relative">
         <button
           className="absolute top-2 right-2 text-white bg-red-600 hover:bg-red-700 rounded px-3 py-1"
           onClick={onClose}
@@ -191,12 +191,12 @@ const StreamModal: React.FC<{ stream: Stream; onClose: () => void }> = ({
           Close
         </button>
         <div className="mb-4 text-lg font-semibold">{stream.name}</div>
-        <div className="w-full aspect-video bg-black rounded overflow-hidden">
+        <div className="w-full aspect-video bg-black rounded overflow-hidden flex items-center justify-center" style={{ minHeight: 480 }}>
           <img
             src={apiService.getVideoFeedUrl(stream.id)}
             alt={stream.name}
-            className="w-full h-full object-cover"
-            style={{ minHeight: 320 }}
+            className="w-full h-full object-contain"
+            style={{ minHeight: 480, maxHeight: 600 }}
             draggable={false}
           />
         </div>
