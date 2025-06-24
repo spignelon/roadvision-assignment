@@ -6,9 +6,11 @@ import time
 import io
 from PIL import Image
 import threading
+import os
+from pathlib import Path
 
-from app import app, CONFIG, streams, detections, logger
-from models import StreamProcessor
+from app import app, CONFIG, streams, detections, logger, discover_videos
+from vision import StreamProcessor
 
 # Define routes
 @app.route('/api/streams', methods=['GET'])
@@ -175,11 +177,89 @@ def get_stats():
     }
     return jsonify(stats)
 
-# Initialize any existing streams on startup
-@app.before_first_request
+@app.route('/api/videos', methods=['GET'])
+def get_videos():
+    """Get all available videos from the videos directory"""
+    videos = discover_videos(CONFIG["video_dir"])
+    return jsonify(videos)
+
+@app.route('/api/videos/<video_id>/load', methods=['POST'])
+def load_video(video_id):
+    """Load a specific video from the videos directory"""
+    videos = discover_videos(CONFIG["video_dir"])
+    
+    # Find the video with the given ID
+    video = next((v for v in videos if v["id"] == video_id), None)
+    if not video:
+        return jsonify({"error": f"Video {video_id} not found"}), 404
+    
+    # Check if this video is already loaded as a stream
+    if video_id in streams:
+        return jsonify({"error": f"Video {video_id} is already loaded", "stream_id": video_id}), 400
+    
+    # Create stream processor and start it
+    processor = StreamProcessor(video_id, video["url"], CONFIG)
+    success = processor.start()
+    
+    if not success:
+        return jsonify({"error": f"Failed to start video stream: {video['url']}"}), 400
+    
+    # Add to streams dict
+    streams[video_id] = processor
+    
+    # Update config
+    CONFIG["streams"][video_id] = {"url": video["url"]}
+    
+    return jsonify({"id": video_id, "status": "started", "name": video["name"]})
+
+@app.route('/api/videos/load_all', methods=['POST'])
+def load_all_videos():
+    """Load all videos from the videos directory"""
+    videos = discover_videos(CONFIG["video_dir"])
+    results = []
+    
+    for video in videos:
+        # Skip already loaded videos
+        if video["id"] in streams:
+            results.append({"id": video["id"], "status": "already_loaded", "name": video["name"]})
+            continue
+            
+        # Create stream processor and start it
+        processor = StreamProcessor(video["id"], video["url"], CONFIG)
+        success = processor.start()
+        
+        if success:
+            # Add to streams dict
+            streams[video["id"]] = processor
+            # Update config
+            CONFIG["streams"][video["id"]] = {"url": video["url"]}
+            results.append({"id": video["id"], "status": "started", "name": video["name"]})
+        else:
+            results.append({"id": video["id"], "status": "failed", "name": video["name"]})
+    
+    return jsonify(results)
+
+# Replace the @app.before_first_request decorator 
+# with a function that can be called directly
 def initialize_streams():
+    # First, load any streams from the config
     for stream_id, stream_config in CONFIG["streams"].items():
-        processor = StreamProcessor(stream_id, stream_config["url"], CONFIG)
-        processor.start()
-        streams[stream_id] = processor
-        logger.info(f"Initialized stream {stream_id}")
+        if stream_id not in streams:
+            processor = StreamProcessor(stream_id, stream_config["url"], CONFIG)
+            processor.start()
+            streams[stream_id] = processor
+            logger.info(f"Initialized stream {stream_id}")
+    
+    # Then, discover and auto-load videos if there are no streams yet
+    if not streams:
+        videos = discover_videos(CONFIG["video_dir"])
+        for video in videos:
+            processor = StreamProcessor(video["id"], video["url"], CONFIG)
+            success = processor.start()
+            if success:
+                streams[video["id"]] = processor
+                CONFIG["streams"][video["id"]] = {"url": video["url"]}
+                logger.info(f"Auto-loaded video {video['id']}")
+
+# Call initialize_streams at startup
+initialize_streams()

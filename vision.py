@@ -5,6 +5,9 @@ import time
 import threading
 from queue import Queue
 import logging
+import os
+from pathlib import Path
+import sys
 
 logger = logging.getLogger("vms.models")
 
@@ -41,30 +44,93 @@ class MotionDetector:
 class YOLODetector:
     def __init__(self, model_path, confidence=0.5):
         self.confidence = confidence
-        # Load YOLOv5 model
-        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=model_path)
+        
+        # Check if model exists
+        if not os.path.exists(model_path):
+            logger.info(f"Model {model_path} not found, downloading to models directory...")
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            
+            # Alternative loading method to avoid package conflict
+            try:
+                # Add cwd to path temporarily to avoid conflict with our models.py
+                sys.path.insert(0, os.getcwd())
+                
+                # Download and load model differently to avoid the conflict
+                import torch.hub
+                torch.hub._validate_not_a_forked_repo = lambda a, b, c: True
+                self.model = torch.hub.load(
+                    'ultralytics/yolov5',
+                    'yolov5s',  # Use a specific model instead of 'custom'
+                    pretrained=True,
+                    verbose=False
+                )
+                sys.path.pop(0)  # Remove the temporary path
+            except Exception as e:
+                logger.error(f"Error loading model: {str(e)}")
+                logger.info("Falling back to loading without running detection")
+                # Create a dummy model for graceful degradation
+                self.model = DummyModel()
+        else:
+            # Model exists, load it directly
+            try:
+                sys.path.insert(0, os.getcwd())
+                import torch.hub
+                torch.hub._validate_not_a_forked_repo = lambda a, b, c: True
+                self.model = torch.hub.load(
+                    'ultralytics/yolov5',
+                    'custom',
+                    path=model_path,
+                    verbose=False
+                )
+                sys.path.pop(0)
+            except Exception as e:
+                logger.error(f"Error loading model: {str(e)}")
+                self.model = DummyModel()
+                
+        # Set confidence threshold
         self.model.conf = confidence
         # Set to only detect people (class 0 in COCO dataset)
-        self.model.classes = [0]  
+        self.model.classes = [0]
         
     def detect(self, frame):
-        # Convert frame to RGB
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # Run inference
-        results = self.model(rgb_frame)
-        
-        # Process results
-        detections = []
-        for *box, conf, cls in results.xyxy[0].cpu().numpy():
-            x1, y1, x2, y2 = map(int, box)
-            detections.append({
-                "bbox": [x1, y1, x2, y2],
-                "confidence": float(conf),
-                "label": "person"
-            })
+        try:
+            # Convert frame to RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
-        return detections
+            # Run inference
+            results = self.model(rgb_frame)
+            
+            # Process results
+            detections = []
+            for *box, conf, cls in results.xyxy[0].cpu().numpy():
+                x1, y1, x2, y2 = map(int, box)
+                detections.append({
+                    "bbox": [x1, y1, x2, y2],
+                    "confidence": float(conf),
+                    "label": "person"
+                })
+                
+            return detections
+        except Exception as e:
+            logger.error(f"Error in detection: {str(e)}")
+            return []
+
+# Dummy model class for graceful degradation
+class DummyModel:
+    """A fallback model that returns empty results when the real model fails to load"""
+    
+    def __init__(self):
+        self.conf = 0.5
+        self.classes = [0]
+        logger.warning("Using dummy model - no detections will be made!")
+        
+    def __call__(self, frame):
+        # Return a dummy result structure compatible with the expected format
+        class DummyResults:
+            def __init__(self):
+                self.xyxy = [torch.zeros((0, 6))]  # Empty tensor with shape (0, 6)
+        
+        return DummyResults()
 
 class StreamProcessor:
     def __init__(self, stream_id, url, config):
@@ -78,6 +144,12 @@ class StreamProcessor:
         self.frame_queue = Queue(maxsize=10)
         self.result_queue = Queue(maxsize=30)
         self.fps = 0
+        self.is_local_file = os.path.isfile(url)
+        self.video_name = Path(url).name if self.is_local_file else url
+        self.last_frame_time = 0
+        self.original_fps = 0
+        self.frame_count = 0
+        self.total_frames = 0
         self.motion_detector = MotionDetector(
             threshold=config["motion"]["threshold"],
             min_contour_area=config["motion"]["contour_area"]
@@ -98,6 +170,10 @@ class StreamProcessor:
             self.running = False
             return False
             
+        # Get video properties
+        self.original_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT)) if self.is_local_file else 0
+        
         # Start the capture thread
         self.thread = threading.Thread(target=self._process_stream)
         self.thread.daemon = True
@@ -108,7 +184,7 @@ class StreamProcessor:
         self.detection_thread.daemon = True
         self.detection_thread.start()
         
-        logger.info(f"Stream {self.stream_id} started")
+        logger.info(f"Stream {self.stream_id} started: {self.video_name}")
         return True
         
     def stop(self):
@@ -127,14 +203,31 @@ class StreamProcessor:
         
         while self.running:
             try:
+                # Control frame rate for local video files to simulate real-time streaming
+                if self.is_local_file and self.original_fps > 0:
+                    target_time = self.frame_count / self.original_fps
+                    current_time = time.time() - last_time
+                    if current_time < target_time:
+                        time.sleep(max(0, target_time - current_time))
+                
                 success, frame = self.cap.read()
+                
                 if not success:
-                    logger.warning(f"Failed to read frame from {self.url}")
-                    # Try to reconnect
-                    self.cap.release()
-                    time.sleep(1)
-                    self.cap = cv2.VideoCapture(self.url)
-                    continue
+                    if not self.is_local_file:
+                        logger.warning(f"Failed to read frame from {self.url}")
+                        # Try to reconnect for network streams
+                        self.cap.release()
+                        time.sleep(1)
+                        self.cap = cv2.VideoCapture(self.url)
+                        continue
+                    else:
+                        # For local files, loop back to the beginning
+                        logger.info(f"End of video {self.url}, looping back")
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        self.frame_count = 0
+                        continue
+                
+                self.frame_count += 1
                     
                 # Calculate FPS
                 current_time = time.time()
@@ -228,11 +321,56 @@ class StreamProcessor:
         return self.result_queue.queue[-1]  # Get latest without removing
         
     def get_status(self):
-        return {
+        status = {
             "id": self.stream_id,
             "url": self.url,
+            "name": self.video_name,
             "running": self.running,
             "fps": self.fps,
             "detection_enabled": self.config["detection"]["enabled"],
             "motion_enabled": self.config["motion"]["enabled"],
+            "is_local_file": self.is_local_file,
         }
+        
+        if self.is_local_file:
+            status.update({
+                "progress": (self.frame_count / self.total_frames) * 100 if self.total_frames > 0 else 0,
+                "total_frames": self.total_frames,
+                "current_frame": self.frame_count
+            })
+            
+        return status
+
+def draw_detections(frame, result):
+    """Draw detections and motion on a frame"""
+    
+    # Draw object detections (people)
+    if result.get("detections"):
+        for det in result["detections"]:
+            x1, y1, x2, y2 = det["bbox"]
+            label = det["label"]
+            conf = det["confidence"]
+            
+            # Green box for people
+            color = (0, 255, 0)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            
+            # Add label
+            label_text = f"{label}: {conf:.2f}"
+            cv2.putText(frame, label_text, (x1, y1 - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+    # Draw motion regions
+    if result.get("motion"):
+        for mot in result["motion"]:
+            x1, y1, x2, y2 = mot["bbox"]
+            
+            # Red box for motion
+            color = (0, 0, 255)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            
+            # Add label
+            cv2.putText(frame, "motion", (x1, y1 - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        
+    return frame

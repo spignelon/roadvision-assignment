@@ -1,6 +1,6 @@
-# Video Management System with AI Integration
+# RoadVision - Video Management System with AI Integration
 
-This is a lightweight Flask-based Video Management System that can handle multiple video streams and apply AI models for person detection and motion detection.
+A lightweight Flask-based Video Management System that can handle multiple video streams and apply AI models for person detection and motion detection.
 
 ## Features
 
@@ -9,6 +9,7 @@ This is a lightweight Flask-based Video Management System that can handle multip
 - Motion detection (red bounding boxes)
 - REST API for managing streams and retrieving detection results
 - Real-time video feeds with annotations
+- Local video file support with automatic discovery
 
 ## Setup Instructions
 
@@ -22,8 +23,8 @@ This is a lightweight Flask-based Video Management System that can handle multip
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/vms-ai.git
-cd vms-ai
+git clone https://github.com/yourusername/roadvision.git
+cd roadvision
 ```
 
 2. Create a virtual environment and activate it:
@@ -37,10 +38,14 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Download the YOLOv5 model:
+4. Create a videos directory:
 ```bash
-mkdir -p models
-# YOLOv5s model will be downloaded automatically on first run
+mkdir -p videos
+```
+
+5. Place any test videos in the videos directory:
+```bash
+cp /path/to/your/videos/*.mp4 videos/
 ```
 
 ### Running the Application
@@ -53,43 +58,385 @@ python run.py
 
 The server will be available at `http://localhost:5000`.
 
-## API Endpoints
+## API Reference
 
-- `GET /api/streams` - List all streams
-- `POST /api/streams` - Add a new stream (body: `{"url": "rtsp://example.com/stream"}`)
-- `DELETE /api/streams/{id}` - Delete a stream
-- `GET /api/streams/{id}/status` - Get stream status
-- `GET /api/streams/{id}/detections` - Get latest detections
-- `GET /api/streams/{id}/snapshot` - Get a snapshot image with annotations
-- `GET /api/streams/{id}/video_feed` - Get live video feed with annotations
-- `GET /api/config` - Get current configuration
-- `POST /api/config` - Update configuration
-- `GET /api/stats` - Get system statistics
+### Stream Management
 
-## Adding Streams
+#### List All Streams
+```
+GET /api/streams
+```
 
-To add a stream, send a POST request to `/api/streams` with the stream URL:
+**Response:**
+```json
+[
+  {
+    "id": "stream1",
+    "url": "rtsp://example.com/stream1",
+    "name": "stream1",
+    "running": true,
+    "fps": 25.6,
+    "detection_enabled": true,
+    "motion_enabled": true,
+    "is_local_file": false
+  },
+  {
+    "id": "video_sample",
+    "url": "videos/sample.mp4",
+    "name": "sample.mp4",
+    "running": true,
+    "fps": 30.0,
+    "detection_enabled": true,
+    "motion_enabled": true,
+    "is_local_file": true,
+    "progress": 45.2,
+    "total_frames": 1200,
+    "current_frame": 542
+  }
+]
+```
 
+#### Add a New Stream
+```
+POST /api/streams
+```
+
+**Request Body:**
+```json
+{
+  "url": "rtsp://example.com/stream1",
+  "id": "custom_id" // Optional, will generate a timestamp ID if not provided
+}
+```
+
+**Response:**
+```json
+{
+  "id": "custom_id",
+  "status": "started"
+}
+```
+
+#### Delete a Stream
+```
+DELETE /api/streams/{stream_id}
+```
+
+**Response:**
+```json
+{
+  "status": "deleted"
+}
+```
+
+#### Get Stream Status
+```
+GET /api/streams/{stream_id}/status
+```
+
+**Response:**
+```json
+{
+  "id": "stream1",
+  "url": "rtsp://example.com/stream1",
+  "name": "stream1",
+  "running": true,
+  "fps": 25.6,
+  "detection_enabled": true,
+  "motion_enabled": true,
+  "is_local_file": false
+}
+```
+
+#### Get Latest Detections
+```
+GET /api/streams/{stream_id}/detections
+```
+
+**Response:**
+```json
+{
+  "timestamp": 1656023854.123,
+  "detections": [
+    {
+      "bbox": [100, 200, 300, 400],
+      "confidence": 0.91,
+      "label": "person",
+      "type": "person"
+    },
+    {
+      "bbox": [500, 300, 600, 450],
+      "confidence": 1.0,
+      "label": "motion",
+      "type": "motion"
+    }
+  ]
+}
+```
+
+#### Get Snapshot Image
+```
+GET /api/streams/{stream_id}/snapshot
+```
+
+**Response:** JPEG image with annotated detections
+
+#### Get Live Video Feed
+```
+GET /api/streams/{stream_id}/video_feed
+```
+
+**Response:** MJPEG multipart stream of annotated video
+
+### Configuration Management
+
+#### Get Current Configuration
+```
+GET /api/config
+```
+
+**Response:**
+```json
+{
+  "streams": {
+    "stream1": {
+      "url": "rtsp://example.com/stream1"
+    }
+  },
+  "detection": {
+    "enabled": true,
+    "model_path": "models/yolov5s.pt",
+    "confidence": 0.5
+  },
+  "motion": {
+    "enabled": true,
+    "threshold": 25,
+    "contour_area": 500
+  },
+  "video_dir": "videos"
+}
+```
+
+#### Update Configuration
+```
+POST /api/config
+```
+
+**Request Body:**
+```json
+{
+  "detection": {
+    "enabled": false,
+    "confidence": 0.7
+  },
+  "motion": {
+    "threshold": 30
+  }
+}
+```
+
+**Response:** Updated configuration object
+
+### System Statistics
+
+#### Get System Statistics
+```
+GET /api/stats
+```
+
+**Response:**
+```json
+{
+  "total_streams": 3,
+  "active_streams": 2,
+  "streams": [
+    {
+      "id": "stream1",
+      "url": "rtsp://example.com/stream1",
+      "name": "stream1",
+      "running": true,
+      "fps": 25.6,
+      "detection_enabled": true,
+      "motion_enabled": true,
+      "is_local_file": false
+    },
+    // Additional streams...
+  ]
+}
+```
+
+### Video Management
+
+#### List Available Videos
+```
+GET /api/videos
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "video_sample1",
+    "url": "videos/sample1.mp4",
+    "name": "sample1.mp4"
+  },
+  {
+    "id": "video_sample2",
+    "url": "videos/sample2.mp4",
+    "name": "sample2.mp4"
+  }
+]
+```
+
+#### Load a Video as Stream
+```
+POST /api/videos/{video_id}/load
+```
+
+**Response:**
+```json
+{
+  "id": "video_sample1",
+  "status": "started",
+  "name": "sample1.mp4"
+}
+```
+
+#### Load All Available Videos
+```
+POST /api/videos/load_all
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "video_sample1",
+    "status": "started",
+    "name": "sample1.mp4"
+  },
+  {
+    "id": "video_sample2",
+    "status": "already_loaded",
+    "name": "sample2.mp4"
+  }
+]
+```
+
+## Usage Examples
+
+### Adding an RTSP Stream
 ```bash
 curl -X POST http://localhost:5000/api/streams \
   -H "Content-Type: application/json" \
   -d '{"url": "rtsp://example.com/stream1"}'
 ```
 
-## Testing with Sample Videos
-
-You can test with local video files by using:
-
-```bash
-curl -X POST http://localhost:5000/api/streams \
-  -H "Content-Type: application/json" \
-  -d '{"url": "path/to/your/video.mp4"}'
-```
-
-Or use webcam:
-
+### Adding a Webcam Stream
 ```bash
 curl -X POST http://localhost:5000/api/streams \
   -H "Content-Type: application/json" \
   -d '{"url": "0"}'  # 0 is typically the default webcam
+```
+
+### Loading a Video File
+```bash
+curl -X POST http://localhost:5000/api/videos/video_sample/load
+```
+
+### Loading All Available Videos
+```bash
+curl -X POST http://localhost:5000/api/videos/load_all
+```
+
+### Adjusting Detection Settings
+```bash
+curl -X POST http://localhost:5000/api/config \
+  -H "Content-Type: application/json" \
+  -d '{"detection": {"confidence": 0.7}}'
+```
+
+## Viewing the Video Feeds
+
+To view the video feed with annotations in a browser:
+- Navigate to `http://localhost:5000/api/streams/{stream_id}/video_feed`
+- Or use the snapshot endpoint to get a still image: `http://localhost:5000/api/streams/{stream_id}/snapshot`
+
+## Supported File Formats
+
+RoadVision automatically discovers and can process these video formats:
+- MP4 (.mp4)
+- AVI (.avi)
+- MOV (.mov)
+- MKV (.mkv)
+
+Simply place your files in the `videos` directory and use the API to load them.
+
+## Troubleshooting
+
+### Missing System Dependencies
+
+If you encounter errors related to missing shared libraries when trying to import OpenCV, you need to install the required system dependencies.
+
+#### Ubuntu/Debian:
+```bash
+sudo apt-get update
+sudo apt-get install -y libgtk2.0-dev libgl1-mesa-glx libglib2.0-0
+```
+
+#### Fedora/RHEL/CentOS:
+```bash
+sudo dnf install -y gtk2-devel mesa-libGL glib2
+```
+
+#### Arch Linux:
+```bash
+sudo pacman -S gtk2 mesa glib2
+```
+
+### OpenCV Import Errors
+
+If you encounter issues specifically with the error `ImportError: libgthread-2.0.so.0: cannot open shared object file: No such file or directory`, install the GTK library:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y libglib2.0-0
+
+# Fedora/RHEL/CentOS
+sudo dnf install -y glib2
+
+# Arch Linux
+sudo pacman -S glib2
+```
+
+### Python Version Compatibility
+
+This application is tested with Python 3.8-3.10. If you're using Python 3.11 or newer, you might need to use specific versions of dependencies:
+
+```bash
+pip install opencv-python-headless==4.5.5.64
+```
+
+### CUDA/GPU Support
+
+If you want to enable GPU acceleration:
+
+1. Install the CUDA toolkit appropriate for your GPU
+2. Install the GPU version of PyTorch:
+```bash
+pip uninstall torch torchvision
+pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu117
+```
+
+### Firewall Issues
+
+If you can't access the web interface from other computers, check your firewall settings:
+
+```bash
+# Ubuntu/Debian
+sudo ufw allow 5000
+
+# Fedora/RHEL/CentOS
+sudo firewall-cmd --zone=public --add-port=5000/tcp --permanent
+sudo firewall-cmd --reload
 ```
