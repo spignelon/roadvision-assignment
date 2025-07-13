@@ -2,6 +2,8 @@
 
 A lightweight Flask-based Video Management System that can handle multiple video streams and apply AI models for person detection and motion detection.
 
+Demo video link: https://youtu.be/OTDdEPBWPdw
+
 ## Features
 
 - Support for 10+ simultaneous video streams
